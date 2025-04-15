@@ -1,0 +1,1 @@
+# Scam filters, keyword blocking
