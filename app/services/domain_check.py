@@ -1,4 +1,4 @@
-# DNS check api
+import whois
 import dns.resolver
 import dns.exception
 from urllib.parse import urlparse
@@ -7,226 +7,255 @@ import logging
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def check_domain_email_security(url: str) -> dict:
+def check_link_details(url_string, dkim_selectors=None):
     """
-    Checks the domain extracted from a URL for DNS resolution, SPF, and DMARC records.
+    Checks WHOIS, SPF, DMARC, and optionally DKIM records for the domain of a URL.
 
     Args:
-        url: The URL string (e.g., "https://www.example.com/path").
+        url_string (str): The URL to check (e.g., "https://www.google.com").
+        dkim_selectors (list, optional): A list of DKIM selectors to check.
+                                         Defaults to None. DKIM requires selectors
+                                         found in email headers for a proper check.
 
     Returns:
-        A dictionary containing the check results:
-        {
-            'url': The original URL provided.
-            'domain': The extracted domain name.
-            'dns_a': List of A record IP addresses or error message.
-            'dns_aaaa': List of AAAA record IP addresses or error message.
-            'spf': The SPF record string, None if not found, or error message.
-            'dmarc': The DMARC record string, None if not found, or error message.
-            'dkim_notes': Information about DKIM checking limitations.
-            'errors': A list of errors encountered during the process.
-        }
+        dict: A dictionary containing the results for 'domain', 'whois',
+              'spf', 'dmarc', and 'dkim'. Values might be data, None,
+              or error messages.
     """
     results = {
-        'url': url,
+        'url_provided': url_string,
         'domain': None,
-        'dns_a': None,
-        'dns_aaaa': None,
-        'spf': None,
-        'dmarc': None,
-        'dkim_notes': "DKIM requires a 'selector' found in email headers for a full check. "
-                      "Only DMARC presence (which often relies on DKIM) is checked here.",
-        'errors': []
+        'whois': None,
+        'spf': {'status': 'Not Checked', 'records': []},
+        'dmarc': {'status': 'Not Checked', 'record': None},
+        'dkim': {'status': 'Not Checked', 'selectors_checked': {}, 'info': None}
     }
 
-    # 1. Extract Domain from URL
-    try:
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc
-        if not domain:
-            # Handle cases like relative paths or invalid URLs
-            if parsed_url.path and '.' in parsed_url.path.split('/')[0]:
-                 # Maybe it's just a domain name without scheme?
-                 domain = parsed_url.path.split('/')[0]
-                 logging.info(f"Assuming '{domain}' is the domain from path '{parsed_url.path}'")
-            else:
-                 raise ValueError("Could not extract domain/hostname from URL")
+    if dkim_selectors is None:
+        dkim_selectors = [] # Ensure it's iterable
 
+    # --- 1. Extract Domain from URL ---
+    try:
+        parsed_url = urlparse(url_string)
+        domain = parsed_url.netloc
         # Remove port if present (e.g., example.com:8080)
         if ':' in domain:
             domain = domain.split(':')[0]
-
+        # Basic validation - rudimentary, improve if needed
+        if '.' not in domain or domain.startswith('.'):
+             raise ValueError("Invalid domain extracted")
         results['domain'] = domain
         logging.info(f"Extracted domain: {domain}")
-
-    except ValueError as e:
-        error_msg = f"Invalid URL format: {e}"
-        logging.error(error_msg)
-        results['errors'].append(error_msg)
-        # Cannot proceed without a domain
-        results['dns_a'] = "Error: Domain extraction failed."
-        results['dns_aaaa'] = "Error: Domain extraction failed."
-        results['spf'] = "Error: Domain extraction failed."
-        results['dmarc'] = "Error: Domain extraction failed."
+    except Exception as e:
+        logging.error(f"Error parsing URL '{url_string}': {e}")
+        results['domain'] = f"Error parsing URL: {e}"
+        # Cannot proceed without a valid domain
         return results
 
-    # Initialize DNS Resolver
-    resolver = dns.resolver.Resolver()
-    resolver.timeout = 5
-    resolver.lifetime = 5
-
-    # --- DNS Checks (A and AAAA records) ---
-    logging.info(f"Checking A records for {domain}...")
+    # --- 2. WHOIS Check ---
     try:
-        a_records = resolver.resolve(domain, 'A')
-        results['dns_a'] = [record.to_text() for record in a_records]
-        logging.info(f"Found A records: {results['dns_a']}")
-    except dns.resolver.NoAnswer:
-        results['dns_a'] = "No A records found."
-        logging.warning(f"No A records found for {domain}")
-    except dns.resolver.NXDOMAIN:
-        results['dns_a'] = f"Domain does not exist (NXDOMAIN)."
-        logging.error(f"Domain {domain} does not exist (NXDOMAIN).")
-        results['errors'].append(f"Domain {domain} does not exist (NXDOMAIN). Cannot perform further checks.")
-        # Stop further checks if domain doesn't exist
-        results['dns_aaaa'] = "Error: NXDOMAIN"
-        results['spf'] = "Error: NXDOMAIN"
-        results['dmarc'] = "Error: NXDOMAIN"
-        return results
-    except dns.exception.Timeout:
-        results['dns_a'] = "DNS query timed out."
-        logging.error(f"DNS query for A records timed out for {domain}")
-        results['errors'].append(f"DNS query for A records timed out for {domain}")
-    except Exception as e:
-        error_msg = f"Error resolving A records: {e}"
-        logging.error(error_msg)
-        results['dns_a'] = f"Error: {e}"
-        results['errors'].append(error_msg)
-
-
-    logging.info(f"Checking AAAA records for {domain}...")
-    try:
-        aaaa_records = resolver.resolve(domain, 'AAAA')
-        results['dns_aaaa'] = [record.to_text() for record in aaaa_records]
-        logging.info(f"Found AAAA records: {results['dns_aaaa']}")
-    except dns.resolver.NoAnswer:
-        results['dns_aaaa'] = "No AAAA records found."
-        logging.warning(f"No AAAA records found for {domain}")
-    except dns.resolver.NXDOMAIN:
-        # Should have been caught by A record check, but handle defensively
-        results['dns_aaaa'] = f"Domain does not exist (NXDOMAIN)."
-        logging.error(f"Domain {domain} does not exist (NXDOMAIN).")
-        results['errors'].append(f"Domain {domain} does not exist (NXDOMAIN).")
-    except dns.exception.Timeout:
-        results['dns_aaaa'] = "DNS query timed out."
-        logging.error(f"DNS query for AAAA records timed out for {domain}")
-        results['errors'].append(f"DNS query for AAAA records timed out for {domain}")
-    except Exception as e:
-        error_msg = f"Error resolving AAAA records: {e}"
-        logging.error(error_msg)
-        results['dns_aaaa'] = f"Error: {e}"
-        results['errors'].append(error_msg)
-
-    # --- SPF Check ---
-    logging.info(f"Checking SPF record for {domain}...")
-    try:
-        txt_records = resolver.resolve(domain, 'TXT')
-        spf_record = None
-        for record in txt_records:
-            record_text = record.to_text().strip('"') # Remove surrounding quotes
-            if record_text.lower().startswith("v=spf1"):
-                spf_record = record_text
-                break # Found the SPF record
-        results['spf'] = spf_record if spf_record else "No SPF record found."
-        if spf_record:
-            logging.info(f"Found SPF record: {spf_record}")
+        logging.info(f"Performing WHOIS lookup for: {domain}")
+        w = whois.whois(domain)
+        # python-whois returns different structures. Try to get text or dict.
+        if w.text:
+             # Sometimes expiration_date is a list, handle it
+            if isinstance(w.get('expiration_date'), list):
+                w['expiration_date'] = w['expiration_date'][0]
+             # Convert datetime objects to strings for easier serialization if needed
+            whois_data = {k: str(v) if v is not None else None for k, v in w.items()}
+            results['whois'] = whois_data
+            logging.info(f"WHOIS lookup successful for {domain}.")
         else:
-             logging.warning(f"No SPF record found for {domain}")
+             results['whois'] = "WHOIS data not found or empty."
+             logging.warning(f"WHOIS data not found or empty for {domain}.")
+
+    except whois.parser.PywhoisError as e:
+         # Specific error from python-whois for domain not found etc.
+         results['whois'] = f"WHOIS lookup error: No match for '{domain}' or query failed."
+         logging.warning(f"WHOIS lookup failed for {domain}: {e}")
+    except Exception as e:
+        results['whois'] = f"WHOIS lookup error: {e}"
+        logging.error(f"Unexpected error during WHOIS lookup for {domain}: {e}")
+
+    # --- 3. DNS Resolver Setup ---
+    resolver = dns.resolver.Resolver()
+    # Optionally configure nameservers, timeouts etc.
+    # resolver.nameservers = ['8.8.8.8', '1.1.1.1']
+    # resolver.timeout = 5
+    # resolver.lifetime = 10
+
+    # --- 4. SPF Check (TXT Record) ---
+    try:
+        logging.info(f"Querying SPF (TXT record) for: {domain}")
+        spf_records = []
+        answers = resolver.resolve(domain, 'TXT')
+        found_spf = False
+        for rdata in answers:
+            for txt_string in rdata.strings:
+                decoded_string = txt_string.decode('utf-8')
+                if decoded_string.lower().startswith('v=spf1'):
+                    spf_records.append(decoded_string)
+                    found_spf = True
+        if found_spf:
+             results['spf']['status'] = "Record(s) Found"
+             results['spf']['records'] = spf_records
+             logging.info(f"Found SPF records for {domain}: {spf_records}")
+        else:
+             results['spf']['status'] = "No SPF record found"
+             logging.warning(f"No SPF TXT record found for {domain}")
 
     except dns.resolver.NoAnswer:
-        results['spf'] = "No TXT records found (implies no SPF)."
+        results['spf']['status'] = "No TXT records found at all for domain"
         logging.warning(f"No TXT records found for {domain}")
     except dns.resolver.NXDOMAIN:
-         # Should have been caught earlier
-        results['spf'] = f"Domain does not exist (NXDOMAIN)."
-        logging.error(f"Domain {domain} does not exist (NXDOMAIN).")
+        results['spf']['status'] = f"Domain '{domain}' does not exist (NXDOMAIN)"
+        logging.warning(f"Domain {domain} does not exist (NXDOMAIN)")
     except dns.exception.Timeout:
-        results['spf'] = "DNS query for TXT/SPF timed out."
-        logging.error(f"DNS query for TXT/SPF timed out for {domain}")
-        results['errors'].append(f"DNS query for TXT/SPF timed out for {domain}")
+         results['spf']['status'] = "DNS query timed out"
+         logging.error(f"DNS query for SPF on {domain} timed out.")
     except Exception as e:
-        error_msg = f"Error resolving TXT/SPF records: {e}"
-        logging.error(error_msg)
-        results['spf'] = f"Error: {e}"
-        results['errors'].append(error_msg)
+        results['spf']['status'] = f"SPF check error: {e}"
+        logging.error(f"Error checking SPF for {domain}: {e}")
 
-
-    # --- DMARC Check ---
-    dmarc_domain = f"_dmarc.{domain}"
-    logging.info(f"Checking DMARC record at {dmarc_domain}...")
+    # --- 5. DMARC Check (TXT Record at _dmarc subdomain) ---
+    dmarc_query = f"_dmarc.{domain}"
     try:
-        txt_records = resolver.resolve(dmarc_domain, 'TXT')
-        dmarc_record = None
-        for record in txt_records:
-            record_text = record.to_text().strip('"') # Remove surrounding quotes
-            if record_text.lower().startswith("v=dmarc1"):
-                dmarc_record = record_text
-                break # Found the DMARC record
-        results['dmarc'] = dmarc_record if dmarc_record else "No DMARC record found."
-        if dmarc_record:
-            logging.info(f"Found DMARC record: {dmarc_record}")
-        else:
-             logging.warning(f"No DMARC record found at {dmarc_domain}")
+        logging.info(f"Querying DMARC (TXT record) for: {dmarc_query}")
+        answers = resolver.resolve(dmarc_query, 'TXT')
+        found_dmarc = False
+        for rdata in answers:
+             for txt_string in rdata.strings:
+                decoded_string = txt_string.decode('utf-8')
+                if decoded_string.lower().startswith('v=dmarc1'):
+                    results['dmarc']['record'] = decoded_string
+                    results['dmarc']['status'] = "Record Found"
+                    found_dmarc = True
+                    logging.info(f"Found DMARC record for {domain}: {decoded_string}")
+                    break # Typically only one DMARC record
+             if found_dmarc:
+                 break
+        if not found_dmarc:
+             results['dmarc']['status'] = "No DMARC record found"
+             logging.warning(f"No DMARC record found at {dmarc_query}")
 
     except dns.resolver.NoAnswer:
-        results['dmarc'] = "No TXT records found at _dmarc subdomain (implies no DMARC)."
-        logging.warning(f"No TXT records found at {dmarc_domain}")
+        results['dmarc']['status'] = f"No TXT record found for {dmarc_query}"
+        logging.warning(f"No DMARC TXT record found for {dmarc_query}")
     except dns.resolver.NXDOMAIN:
-        results['dmarc'] = "No DMARC record found (NXDOMAIN for _dmarc subdomain)."
-        logging.warning(f"No DMARC record published for {domain} (_dmarc subdomain does not exist).")
+        results['dmarc']['status'] = f"DMARC domain '{dmarc_query}' does not exist (NXDOMAIN)"
+        logging.warning(f"DMARC domain {dmarc_query} does not exist (NXDOMAIN)")
     except dns.exception.Timeout:
-        results['dmarc'] = "DNS query for TXT/DMARC timed out."
-        logging.error(f"DNS query for TXT/DMARC timed out for {dmarc_domain}")
-        results['errors'].append(f"DNS query for TXT/DMARC timed out for {dmarc_domain}")
+         results['dmarc']['status'] = "DNS query timed out"
+         logging.error(f"DNS query for DMARC on {domain} timed out.")
     except Exception as e:
-        error_msg = f"Error resolving TXT/DMARC records: {e}"
-        logging.error(error_msg)
-        results['dmarc'] = f"Error: {e}"
-        results['errors'].append(error_msg)
+        results['dmarc']['status'] = f"DMARC check error: {e}"
+        logging.error(f"Error checking DMARC for {domain}: {e}")
 
-    # --- DKIM Notes ---
-    # Already added in the initial dictionary setup.
 
-    logging.info(f"Finished checks for {url}")
+    # --- 6. DKIM Check (TXT Record at selector._domainkey subdomain) ---
+    if not dkim_selectors:
+        results['dkim']['status'] = "Not Checked"
+        results['dkim']['info'] = "No DKIM selectors provided. DKIM checks require specific selectors (e.g., 'google', 's1')."
+        logging.info(f"Skipping DKIM check for {domain} as no selectors were provided.")
+    else:
+        results['dkim']['status'] = "Checked"
+        logging.info(f"Checking DKIM for selectors: {dkim_selectors}")
+        all_selectors_failed = True # Assume failure until one succeeds
+        for selector in dkim_selectors:
+            dkim_query = f"{selector}._domainkey.{domain}"
+            try:
+                logging.info(f"Querying DKIM (TXT record) for: {dkim_query}")
+                answers = resolver.resolve(dkim_query, 'TXT')
+                selector_records = []
+                for rdata in answers:
+                    # DKIM records can be split across multiple strings
+                    full_record = "".join([s.decode('utf-8') for s in rdata.strings])
+                    selector_records.append(full_record)
+
+                if selector_records:
+                    results['dkim']['selectors_checked'][selector] = {
+                        'status': 'Record(s) Found',
+                        'records': selector_records
+                    }
+                    logging.info(f"Found DKIM record(s) for selector '{selector}' at {dkim_query}")
+                    all_selectors_failed = False # At least one lookup worked
+                else:
+                     results['dkim']['selectors_checked'][selector] = {
+                        'status': 'No DKIM record found',
+                        'records': []
+                     }
+                     logging.warning(f"No DKIM record found for selector '{selector}' at {dkim_query}")
+
+
+            except dns.resolver.NoAnswer:
+                 results['dkim']['selectors_checked'][selector] = {
+                     'status': f"No TXT record found for {dkim_query}",
+                     'records': []
+                 }
+                 logging.warning(f"No DKIM TXT record found for {dkim_query}")
+            except dns.resolver.NXDOMAIN:
+                 results['dkim']['selectors_checked'][selector] = {
+                     'status': f"DKIM domain '{dkim_query}' does not exist (NXDOMAIN)",
+                     'records': []
+                 }
+                 logging.warning(f"DKIM domain {dkim_query} does not exist (NXDOMAIN)")
+            except dns.exception.Timeout:
+                results['dkim']['selectors_checked'][selector] = {
+                    'status': "DNS query timed out",
+                    'records': []
+                }
+                logging.error(f"DNS query for DKIM selector '{selector}' on {domain} timed out.")
+            except Exception as e:
+                results['dkim']['selectors_checked'][selector] = {
+                    'status': f"DKIM check error: {e}",
+                    'records': []
+                }
+                logging.error(f"Error checking DKIM selector '{selector}' for {domain}: {e}")
+
+        if all_selectors_failed and dkim_selectors:
+             results['dkim']['info'] = "Checked provided selectors, but errors or no records found for all."
+        elif not all_selectors_failed :
+             results['dkim']['info'] = "Checked provided selectors. See 'selectors_checked' for details."
+
+
     return results
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    # Example URLs to test
-    urls_to_check = [
-        "https://www.google.com",
-        "https://github.com/features",
-        "https://domain-without-dmarc.com", # Replace with a real domain if needed
-        "http://nonexistent-domain-sdfgsdfg.org",
-        "invalid-url-format",
-        "mailto:test@example.com", # Will likely fail domain extraction
-        "example.com" # Test without scheme
-    ]
+    # Example 1: Google (usually has SPF, DMARC, DKIM needs selectors)
+    url1 = "https://www.google.com"
+    # You might know common selectors like 'google' or find them in email headers
+    google_selectors = ['20230601'] # Google uses date-based selectors, this one is current as of mid-2024
+    print(f"--- Checking: {url1} ---")
+    details1 = check_link_details(url1, dkim_selectors=google_selectors)
+    import json # Use json for pretty printing the dictionary
+    print(json.dumps(details1, indent=2))
+    print("-" * 30)
 
-    for link in urls_to_check:
-        print("-" * 40)
-        print(f"Checking link: {link}")
-        check_results = check_domain_email_security(link)
+    # Example 2: A domain that might lack some records
+    url2 = "http://example.com" # Often has basic WHOIS but maybe not SPF/DMARC
+    print(f"--- Checking: {url2} ---")
+    details2 = check_link_details(url2)
+    print(json.dumps(details2, indent=2))
+    print("-" * 30)
 
-        print(f"  Domain: {check_results['domain']}")
-        print(f"  A Records: {check_results['dns_a']}")
-        print(f"  AAAA Records: {check_results['dns_aaaa']}")
-        print(f"  SPF Record: {check_results['spf']}")
-        print(f"  DMARC Record: {check_results['dmarc']}")
-        print(f"  DKIM Notes: {check_results['dkim_notes']}")
-        if check_results['errors']:
-            print(f"  Errors Encountered:")
-            for error in check_results['errors']:
-                print(f"    - {error}")
-        print("-" * 40)
-        print() # Add a newline for readability
+    # Example 3: Invalid URL
+    url3 = "not_a_valid_url"
+    print(f"--- Checking: {url3} ---")
+    details3 = check_link_details(url3)
+    print(json.dumps(details3, indent=2))
+    print("-" * 30)
+
+    # Example 4: Domain likely not existing
+    url4 = "https://thisshouldreallynotexist12345abc.org"
+    print(f"--- Checking: {url4} ---")
+    details4 = check_link_details(url4)
+    print(json.dumps(details4, indent=2))
+    print("-" * 30)
+
+    # Example 5: URL with port
+    url5 = "https://localhost:8080" # Domain is 'localhost'
+    print(f"--- Checking: {url5} ---")
+    details5 = check_link_details(url5) # Expect failures for public lookups on localhost
+    print(json.dumps(details5, indent=2))
+    print("-" * 30)
