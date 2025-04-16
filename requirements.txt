@@ -1,0 +1,31 @@
+# Requirements for the Gmail API checker script
+
+
+# Google API Client Library for Python
+google-api-python-client>=2.0.0
+
+# Google Authentication Library
+google-auth>=1.0.0,<3.0.0
+
+# Google Authentication Library extension for OAuth 2.0 flows
+google-auth-oauthlib>=0.4.1
+
+# Google Authentication Library extension for Requests/HTTP transport
+google-auth-httplib2>=0.1.0
+
+# Note: These libraries may pull in other dependencies like:
+# httplib2, uritemplate, requests, pyasn1, pyasn1-modules, rsa, cachetools, six
+# You generally don't need to list these transitive dependencies unless you
+# have specific version requirements for them.
+
+# requirements.txt
+
+# For WHOIS lookups (imported as 'whois')
+python-whois
+
+# For DNS queries (SPF, DMARC, DKIM - imported as 'dns')
+dnspython
+
+# Note: 'requests' was mentioned as optional but is NOT used
+# in the provided script, so it's excluded here.
+# If you add functionality to fetch the URL content, add 'requests'.

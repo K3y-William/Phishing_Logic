@@ -1,0 +1,1 @@
+# strore user local api key, local path, user filter options, etc.
