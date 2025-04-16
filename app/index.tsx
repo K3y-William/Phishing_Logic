@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 let user: any;
 export {user};
 
+
+
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
