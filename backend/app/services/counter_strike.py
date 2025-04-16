@@ -23,7 +23,7 @@ def timer(timeout):
        if clock.time() > timeout: exit()
        if clock.time() < timeout: clock.sleep(0.1)
 
-def attack_HQ(method, host, port):
+def attack_HQ(method, host, port, time):
     timeout = clock.time() + time
     timer(timeout)
     if method == "UDP-Flood":
