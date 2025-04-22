@@ -1,90 +1,6 @@
-# Email reading/parsing
-# Login, logout
-import os.path
+from flask import app
 import base64
-from email import message_from_bytes # For parsing email content
-
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
-# --- Configuration ---
-# If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # Read-only access
-TOKEN_PATH = 'token.json'
-CREDENTIALS_PATH = 'client_secret.json'
-MAX_RESULTS = 5 # How many emails to fetch
-
-# --- Functions ---
-
-def authenticate_gmail():
-    """Shows basic usage of the Gmail API.
-    Handles user authentication and returns the API service object.
-    """
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first time.
-    if os.path.exists(TOKEN_PATH):
-        try:
-            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-        except ValueError as e:
-             print(f"Error loading token file: {e}. It might be corrupted.")
-             creds = None # Force re-authentication
-
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                print("Credentials expired, refreshing...")
-                creds.refresh(Request())
-            except Exception as e:
-                print(f"Error refreshing token: {e}")
-                print("Could not refresh token. Please re-authenticate.")
-                if os.path.exists(TOKEN_PATH):
-                    os.remove(TOKEN_PATH) # Remove invalid token
-                creds = None # Force re-authentication
-        else:
-             # Only try to load credentials if token refresh failed or no token exists
-             if not os.path.exists(CREDENTIALS_PATH):
-                 print(f"ERROR: Credentials file not found at '{CREDENTIALS_PATH}'")
-                 print("Please download it from Google Cloud Console and save it.")
-                 return None
-
-             try:
-                 flow = InstalledAppFlow.from_client_secrets_file(
-                     CREDENTIALS_PATH, SCOPES)
-                 # Run local server flow automatically handles browser opening & code exchange
-                 creds = flow.run_local_server(port=0)
-             except Exception as e:
-                 print(f"Error during authentication flow: {e}")
-                 return None
-
-        # Save the credentials for the next run only if successfully obtained/refreshed
-        if creds:
-            try:
-                with open(TOKEN_PATH, 'w') as token:
-                    token.write(creds.to_json())
-                print(f"Credentials saved to {TOKEN_PATH}")
-            except Exception as e:
-                print(f"Error saving token: {e}")
-
-    if not creds:
-        print("Failed to obtain credentials.")
-        return None
-
-    # Build the Gmail API service
-    try:
-        service = build('gmail', 'v1', credentials=creds)
-        return service
-    except HttpError as error:
-        print(f'An error occurred building the service: {error}')
-        return None
-    except Exception as e:
-        print(f'An unexpected error occurred building the service: {e}')
-        return None
-
 
 def get_message_details(service, msg_id):
     """Gets detailed information for a specific message."""
@@ -200,13 +116,12 @@ def list_inbox_messages(service, max_results=5):
         print(f'An unexpected error occurred listing messages: {e}')
         return []
 
-# --- Main Execution ---
-if __name__ == '__main__':
-    print("Attempting to authenticate and connect to Gmail...")
-    gmail_service = authenticate_gmail()
-
-    if gmail_service:
-        print("\nAuthentication successful. Fetching inbox messages...")
-        list_inbox_messages(gmail_service, max_results=MAX_RESULTS)
-    else:
-        print("\nCould not connect to Gmail API. Exiting.")
+#TODO write auto scan demon
+# def auto_scan_loop():
+#     while True:
+#         emails = email_handler.list_inbox_messages(app.gmail_service, max_results=10)
+#         for email in emails:
+#             if email['id'] not in scanned_ids:
+#                 scanned_ids.add(email['id'])
+#                 # run scam filter
+#         time.sleep(300)

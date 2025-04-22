@@ -31,3 +31,5 @@ scapy
 # Note: 'requests' was mentioned as optional but is NOT used
 # in the provided script, so it's excluded here.
 # If you add functionality to fetch the URL content, add 'requests'.
+
+flask
