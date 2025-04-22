@@ -233,7 +233,7 @@ if __name__ == "__main__":
     print("-" * 30)
 
     # Example 2: A domain that might lack some records
-    url2 = "http://example.com" # Often has basic WHOIS but maybe not SPF/DMARC
+    url2 = "https://3mku6ze.com" # Often has basic WHOIS but maybe not SPF/DMARC
     print(f"--- Checking: {url2} ---")
     details2 = check_link_details(url2)
     print(json.dumps(details2, indent=2))
