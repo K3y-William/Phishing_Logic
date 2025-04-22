@@ -6,343 +6,329 @@ from email.parser import BytesParser
 from urllib.parse import urlparse
 import logging
 import datetime
+import json # Added for printing results nicely in examples
 
-
-# --- Potentially needed imports for YOUR check_link_details implementation ---
-# Make sure all libraries used within your check_link_details are imported here
-# Examples (adjust based on your actual code):
-import whois
-import dns.resolver
-import socket
-# Add any others your function uses...
-
-# --- OpenAI ---
-from openai import OpenAI, APIError
-
+# --- Potentially needed imports (adjust based on YOUR check_link_details) ---
+# import whois
+# import dns.resolver
+# import socket
+# --- Keep other necessary imports ---
+import time # Example if you need delays
 from domain_check import check_link_details
+# --- Google Gemini ---
+try:
+    import google.generativeai as genai
+    from google.api_core import exceptions as google_api_exceptions
+except ImportError:
+    print("Error: The 'google-generativeai' library is not installed.")
+    print("Please install it using: pip install google-generativeai")
+    genai = None # Set genai to None if import fails
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-API_KEY_FILE = "key.txt"
+GEMINI_API_KEY_FILE = "gemini_key.txt" # Use a separate file for Gemini key
 
-# --- OpenAI API Setup ---
-def get_openai_key(filepath=API_KEY_FILE):
-    """Reads the OpenAI API key from a file."""
+# --- Gemini API Setup ---
+def get_gemini_key(filepath=GEMINI_API_KEY_FILE):
+    """Reads the Gemini API key from a file."""
     try:
         with open(filepath, 'r') as f:
             key = f.read().strip()
             if key:
                 return key
             else:
-                logging.error(f"API key file '{filepath}' is empty.")
+                logging.error(f"Gemini API key file '{filepath}' is empty.")
                 return None
     except FileNotFoundError:
-        logging.error(f"API key file '{filepath}' not found.")
+        logging.error(f"Gemini API key file '{filepath}' not found. Create it and add your key.")
         return None
     except Exception as e:
-        logging.error(f"Error reading API key file '{filepath}': {e}")
+        logging.error(f"Error reading Gemini API key file '{filepath}': {e}")
         return None
 
-# Initialize OpenAI client
-api_key = get_openai_key()
-if api_key:
+# Configure Gemini client
+gemini_api_key = get_gemini_key()
+gemini_model = None # Initialize model variable
+
+if genai and gemini_api_key:
     try:
-        client = OpenAI(api_key=api_key)
-        logging.info("OpenAI client initialized successfully.")
+        genai.configure(api_key=gemini_api_key)
+        # Use the free 'gemini-pro' model
+        gemini_model = genai.GenerativeModel('gemini-pro')
+        logging.info("Gemini client configured and model loaded successfully ('gemini-pro').")
     except Exception as e:
-        logging.error(f"Failed to initialize OpenAI client: {e}")
-        client = None
+        logging.error(f"Failed to configure Gemini client or load model: {e}")
+        gemini_model = None # Ensure model is None if setup fails
+elif not genai:
+     logging.error("Gemini library not found. Gemini features will be disabled.")
 else:
-    logging.error("OpenAI API key not found or empty. OpenAI features will be disabled.")
-    client = None
+    logging.error("Gemini API key not found or empty. Gemini features will be disabled.")
+
+
+# --- Your check_link_details Function ---
+# ============================================================================
+# PASTE YOUR FULL check_link_details FUNCTION IMPLEMENTATION HERE
+# Ensure it takes one argument (url_string) and returns a dictionary.
+# Make sure all necessary libraries for YOUR function are imported above.
+# ============================================================================
+# ============================================================================
+# END OF check_link_details FUNCTION SECTION
+# ============================================================================
+
 
 # --- Email Parsing Logic ---
+# (This function remains the same as before)
 def parse_email(email_content_bytes):
     """Parses raw email bytes to extract headers and body."""
-    # This function remains the same as before.
-    # It does NOT currently extract DKIM-Signature headers.
-    # If your check_link_details needs DKIM selectors, this parsing
-    # function would need to be enhanced.
     try:
         msg = BytesParser(policy=policy.default).parsebytes(email_content_bytes)
-
         sender = msg.get('From', 'Unknown Sender')
         subject = msg.get('Subject', 'No Subject')
-        # Extract other headers if needed (e.g., DKIM-Signature)
-        # dkim_header = msg.get('DKIM-Signature')
-
-        body_plain = None
-        body_html = None
+        body_plain, body_html = None, None
 
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
                 content_disposition = str(part.get('Content-Disposition'))
-                if 'attachment' in content_disposition:
-                    continue
+                if 'attachment' in content_disposition: continue
+                charset = part.get_content_charset('utf-8') # Default to utf-8
                 if content_type == 'text/plain' and body_plain is None:
-                    try:
-                        body_plain = part.get_payload(decode=True).decode(part.get_content_charset('utf-8'), errors='replace')
-                    except Exception as e:
-                        logging.warning(f"Could not decode plain text part: {e}")
-                        body_plain = f"[Decoding Error: {e}]"
+                    try: body_plain = part.get_payload(decode=True).decode(charset, errors='replace')
+                    except Exception as e: logging.warning(f"Decode plain failed: {e}"); body_plain = "[Decode Error]"
                 elif content_type == 'text/html' and body_html is None:
-                     try:
-                         body_html = part.get_payload(decode=True).decode(part.get_content_charset('utf-8'), errors='replace')
-                     except Exception as e:
-                        logging.warning(f"Could not decode HTML part: {e}")
-                        body_html = f"[Decoding Error: {e}]"
+                    try: body_html = part.get_payload(decode=True).decode(charset, errors='replace')
+                    except Exception as e: logging.warning(f"Decode html failed: {e}"); body_html = "[Decode Error]"
         else:
             content_type = msg.get_content_type()
+            charset = msg.get_content_charset('utf-8')
             if content_type == 'text/plain':
-                 try:
-                    body_plain = msg.get_payload(decode=True).decode(msg.get_content_charset('utf-8'), errors='replace')
-                 except Exception as e:
-                    logging.warning(f"Could not decode non-multipart plain text body: {e}")
-                    body_plain = f"[Decoding Error: {e}]"
+                try: body_plain = msg.get_payload(decode=True).decode(charset, errors='replace')
+                except Exception as e: logging.warning(f"Decode non-multi plain failed: {e}"); body_plain = "[Decode Error]"
             elif content_type == 'text/html':
-                 try:
-                    body_html = msg.get_payload(decode=True).decode(msg.get_content_charset('utf-8'), errors='replace')
-                 except Exception as e:
-                    logging.warning(f"Could not decode non-multipart HTML body: {e}")
-                    body_html = f"[Decoding Error: {e}]"
+                 try: body_html = msg.get_payload(decode=True).decode(charset, errors='replace')
+                 except Exception as e: logging.warning(f"Decode non-multi html failed: {e}"); body_html = "[Decode Error]"
 
         body = body_plain if body_plain else body_html if body_html else "[No readable body found]"
         sender_email = 'Unknown'
         parsed_addr = email.utils.parseaddr(sender)
-        if parsed_addr and '@' in parsed_addr[1]:
-            sender_email = parsed_addr[1]
-
+        if parsed_addr and '@' in parsed_addr[1]: sender_email = parsed_addr[1]
         sender_domain = None
         if sender_email != 'Unknown' and '@' in sender_email:
-            try:
-                sender_domain = sender_email.split('@')[1]
-            except IndexError:
-                pass
+            try: sender_domain = sender_email.split('@')[1]
+            except IndexError: pass
 
         return {
-            'sender_header': sender,
-            'sender_email': sender_email,
-            'sender_domain': sender_domain,
-            'subject': subject,
-            'body': body,
-            'body_plain': body_plain,
-            'body_html': body_html
-            # If you enhance parsing, you could return extracted DKIM selectors here
-            # 'dkim_selectors': extracted_dkim_selectors
+            'sender_header': sender, 'sender_email': sender_email, 'sender_domain': sender_domain,
+            'subject': subject, 'body': body, 'body_plain': body_plain, 'body_html': body_html
         }
-
     except Exception as e:
         logging.error(f"Failed to parse email content: {e}")
-        return {
-            'error': f"Failed to parse email: {e}",
-            'sender_header': 'Parse Error',
-            'sender_email': 'Parse Error',
-            'sender_domain': None,
-            'subject': 'Parse Error',
-            'body': 'Parse Error',
-            'body_plain': None,
-            'body_html': None,
-        }
-
+        return { 'error': f"Failed to parse email: {e}", 'sender_header': 'Parse Error', 'sender_email': 'Parse Error',
+                 'sender_domain': None, 'subject': 'Parse Error', 'body': 'Parse Error', 'body_plain': None, 'body_html': None }
 
 # --- Link Extraction ---
+# (This function remains the same as before)
 def extract_links(text):
     """Extracts URLs from a given text string."""
-    # This function remains the same
     url_pattern = re.compile(r'(?:(?:https?|ftp)://|www\.)[\w/\-?=%&.:~+#]+[\w/\-?=%&~+#]')
-    if text:
-        # Added basic filtering for common non-actionable links
-        links = url_pattern.findall(text)
-        filtered_links = [link for link in links if not link.startswith('mailto:')]
-        # You might want to add more filtering here (e.g., image source domains if desired)
-        return filtered_links
-    else:
-        return []
+    if text: return url_pattern.findall(text)
+    else: return []
 
-
-# --- OpenAI Content Analysis ---
-def analyze_content_with_openai(subject, body):
-    """Uses OpenAI API to analyze email content for scam characteristics."""
-    # This function remains the same
-    if not client:
-        return {"error": "OpenAI client not initialized. Cannot analyze content."}
+# --- Gemini Content Analysis ---
+def analyze_content_with_gemini(subject, body):
+    """Uses Gemini API to analyze email content for scam characteristics."""
+    if not gemini_model: # Check if the model object was successfully created
+        return {"error": "Gemini client not initialized or model not loaded. Cannot analyze content."}
     if not body or body.strip() == "[No readable body found]" or body.strip() == "Parse Error":
          return {"warning": "Email body is empty or could not be parsed. Cannot analyze content."}
 
+    # Limit body length to avoid excessive token usage / potential API limits
+    max_body_length = 4000 # Adjust as needed, Gemini Pro has context window limits
+    truncated_body = body[:max_body_length]
+    if len(body) > max_body_length:
+        logging.warning(f"Email body truncated to {max_body_length} characters for Gemini analysis.")
+
     prompt = f"""
     Analyze the following email content (Subject and Body) for potential scam characteristics.
-    Consider urgency, suspicious requests (login, personal info, money), generic greetings,
-    poor grammar/spelling, unexpected attachments/links, impersonation, and too-good-to-be-true offers.
+    Focus on:
+    - Urgency (e.g., "immediate action required", "account suspension")
+    - Suspicious requests (e.g., asking for login credentials, personal info, money transfers)
+    - Generic greetings (e.g., "Dear Customer", "Hello user") vs. personalized ones
+    - Poor grammar, spelling, or awkward phrasing
+    - Mismatched sender information or impersonation attempts
+    - Unexpected attachments or links, especially if domains look suspicious
+    - Offers that seem too good to be true (e.g., lottery wins, unexpected inheritances)
 
-    Provide a brief summary of your findings and a risk assessment level (Low, Medium, High).
-    Explain your reasoning clearly.
+    Based on these factors, provide:
+    1. A brief summary of your findings.
+    2. A clear risk assessment level: Low, Medium, or High.
+    3. A concise explanation for your assessment.
 
     Subject: {subject}
 
     Body:
-    {body[:3500]}  # Limit body length
+    {truncated_body}
 
     Analysis:
     """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini", # Or "gpt-3.5-turbo" etc.
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant specialized in detecting email scams."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=300
-        )
-        analysis = response.choices[0].message.content.strip()
+        # Configure safety settings to be less restrictive if needed,
+        # otherwise potentially harmful content might get blocked by default.
+        # Be cautious when lowering safety settings.
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        ]
+
+        response = gemini_model.generate_content(
+            prompt,
+            # generation_config=genai.types.GenerationConfig( # Optional: control output
+            #     # candidate_count=1, # Usually default is 1
+            #     # stop_sequences=['...'],
+            #     # max_output_tokens=300,
+            #     temperature=0.3 # Lower temperature for more factual/consistent analysis
+            # ),
+            safety_settings=safety_settings # Apply safety settings
+            )
+
+        # Handle potential blocks or lack of response text
+        if not response.parts:
+             if response.prompt_feedback.block_reason:
+                 block_reason = response.prompt_feedback.block_reason
+                 safety_ratings = response.prompt_feedback.safety_ratings
+                 error_msg = f"Gemini analysis blocked. Reason: {block_reason}. Ratings: {safety_ratings}"
+                 logging.warning(error_msg)
+                 return {"error": error_msg, "details": {"block_reason": str(block_reason), "safety_ratings": str(safety_ratings)}}
+             else:
+                  error_msg = "Gemini response empty, reason unknown."
+                  logging.warning(error_msg)
+                  return {"error": error_msg}
+
+        analysis = response.text.strip()
         return {"analysis": analysis}
-    except APIError as e:
-        logging.error(f"OpenAI API error: {e}")
-        return {"error": f"OpenAI API error: {e}"}
+
+    # Handle specific Google API errors if needed
+    except google_api_exceptions.GoogleAPIError as e:
+        logging.error(f"Gemini API error: {e}")
+        return {"error": f"Gemini API error: {e}"}
+    except ValueError as e:
+        # Catch potential errors like blocked prompts due to safety settings if not handled above
+         logging.error(f"Gemini value error (potentially blocked content): {e}")
+         return {"error": f"Gemini analysis error (potentially blocked content): {e}"}
     except Exception as e:
-        logging.error(f"Error during OpenAI analysis: {e}")
-        return {"error": f"An unexpected error occurred during OpenAI analysis: {e}"}
+        # Catch-all for other unexpected errors
+        logging.error(f"Error during Gemini analysis: {type(e).__name__} - {e}")
+        return {"error": f"An unexpected error occurred during Gemini analysis: {e}"}
 
 
 # --- Main Orchestration Function ---
+# (Largely the same, but calls Gemini and uses different report keys)
 def check_email_safety(email_filepath=None, email_content_str=None):
-    """
-    Analyzes an email from a file or string for scam indicators.
-    """
-    # This function is updated to call your check_link_details signature
-    if not email_filepath and not email_content_str:
-        return {"error": "No email file path or content string provided."}
-    if email_filepath and email_content_str:
-         return {"error": "Provide either email_filepath OR email_content_str, not both."}
+    """Analyzes an email from a file or string for scam indicators using Gemini."""
+    if not email_filepath and not email_content_str: return {"error": "No input provided."}
+    if email_filepath and email_content_str: return {"error": "Provide file OR string, not both."}
 
     email_bytes = None
+    input_src = "String Input"
     if email_filepath:
+        input_src = email_filepath
         try:
-            with open(email_filepath, 'rb') as f:
-                email_bytes = f.read()
-        except FileNotFoundError:
-            return {"error": f"Email file not found: {email_filepath}"}
-        except Exception as e:
-            return {"error": f"Error reading email file {email_filepath}: {e}"}
+            with open(email_filepath, 'rb') as f: email_bytes = f.read()
+        except Exception as e: return {"error": f"Error reading {email_filepath}: {e}"}
     elif email_content_str:
-         try:
-              email_bytes = email_content_str.encode('utf-8', errors='replace')
-         except Exception as e:
-              return {"error": f"Error encoding email string to bytes: {e}"}
+         try: email_bytes = email_content_str.encode('utf-8', errors='replace')
+         except Exception as e: return {"error": f"Error encoding string: {e}"}
 
-    if not email_bytes:
-         return {"error": "Could not obtain email content bytes."}
+    if not email_bytes: return {"error": "Could not get email bytes."}
 
     logging.info("Starting email analysis...")
-
-    # 1. Parse Email
     parsed_email = parse_email(email_bytes)
     if parsed_email.get('error'):
         logging.error(f"Email parsing failed: {parsed_email['error']}")
         return {"error": parsed_email['error'], "parsed_data": parsed_email}
 
-    logging.info(f"Parsed email: Sender='{parsed_email['sender_email']}', Subject='{parsed_email['subject']}'")
-    # Note: DKIM selectors are not currently extracted by parse_email.
-    # If you need them, enhance parse_email and retrieve them here.
-    # extracted_dkim_selectors = parsed_email.get('dkim_selectors')
+    logging.info(f"Parsed: Sender='{parsed_email['sender_email']}', Subject='{parsed_email['subject']}'")
 
+    # *** Call Gemini for analysis ***
+    gemini_result = analyze_content_with_gemini(parsed_email['subject'], parsed_email['body'])
+    logging.info(f"Gemini Analysis: {gemini_result}")
 
-    # 2. Analyze Content with OpenAI
-    openai_result = analyze_content_with_openai(parsed_email['subject'], parsed_email['body'])
-    logging.info(f"OpenAI Analysis Result: {openai_result}")
-
-
-    # 3. Analyze Sender Domain
     sender_domain_analysis = None
     if parsed_email['sender_domain']:
         logging.info(f"Analyzing sender domain: {parsed_email['sender_domain']}")
-        # Call check_link_details for the domain.
-        # DKIM selectors are not passed here as they usually relate to the specific email,
-        # not just the domain, and aren't extracted currently.
-        sender_domain_analysis = check_link_details(
-            url_string="https://"+parsed_email['sender_domain'],
-            dkim_selectors=None # Pass None explicitly or rely on default
-        )
+        try:
+            # *** This calls YOUR check_link_details implementation ***
+            sender_domain_analysis = check_link_details(parsed_email['sender_domain'])
+        except NotImplementedError as e:
+             logging.error(f"Cannot analyze sender domain: {e}")
+             sender_domain_analysis = {"error": str(e)}
+        except Exception as e:
+             logging.error(f"Error analyzing sender domain {parsed_email['sender_domain']}: {e}")
+             sender_domain_analysis = {"error": f"Error checking sender domain: {e}"}
     else:
         logging.warning("Sender domain could not be extracted.")
         sender_domain_analysis = {"error": "Sender domain not found in headers"}
 
-
-    # 4. Extract and Analyze Links in Body
     body_for_links = parsed_email['body_html'] if parsed_email['body_html'] else parsed_email['body_plain']
     extracted_links = extract_links(body_for_links)
-    logging.info(f"Found {len(extracted_links)} links in the email body.")
+    logging.info(f"Found {len(extracted_links)} links.")
 
     link_analysis_results = {}
     unique_links = set(extracted_links)
     for link in unique_links:
         logging.info(f"Analyzing link: {link}")
-        # Call check_link_details for each link. DKIM check is not relevant for
-        # arbitrary links found in the body, so dkim_selectors=None is appropriate.
-        link_analysis_results[link] = check_link_details(
-            url_string=link,
-            dkim_selectors=None # Pass None explicitly or rely on default
-        )
-        # Optional delay if needed
-        # import time
-        # time.sleep(0.5)
+        try:
+            # *** This calls YOUR check_link_details implementation ***
+            link_analysis_results[link] = check_link_details(link)
+            # time.sleep(0.5) # Optional delay
+        except NotImplementedError as e:
+             logging.error(f"Cannot analyze link {link}: {e}")
+             link_analysis_results[link] = {"error": str(e)}
+             break # Stop checking links if function isn't implemented
+        except Exception as e:
+             logging.error(f"Error analyzing link {link}: {e}")
+             link_analysis_results[link] = {"error": f"Error checking link: {e}"}
 
-
-    # 5. Consolidate Results
     final_report = {
-        "input_source": email_filepath if email_filepath else "String Input",
-        "parsing_info": {
-            "sender_header": parsed_email['sender_header'],
-            "sender_email": parsed_email['sender_email'],
-            "sender_domain": parsed_email['sender_domain'],
-            "subject": parsed_email['subject'],
-        },
-        "openai_content_analysis": openai_result,
+        "input_source": input_src,
+        "parsing_info": {k: v for k, v in parsed_email.items() if k not in ['body', 'body_plain', 'body_html', 'error']},
+        "gemini_content_analysis": gemini_result, # Renamed key
         "sender_domain_analysis": sender_domain_analysis,
         "links_found": len(extracted_links),
         "unique_links_analyzed": len(unique_links),
         "link_analysis": link_analysis_results,
-        "overall_assessment": "Review individual sections for details."
+        "overall_assessment": "Review sections" # Placeholder
     }
 
-    # Add simple overall risk assessment logic (remains the same, but uses results
-    # from your potentially different check_link_details structure)
+    # Simple risk assessment logic (adapt based on your check_link_details output)
     risk_factors = []
-    if openai_result.get('analysis') and any(word in openai_result['analysis'].lower() for word in ['medium', 'high', 'suspicious', 'scam', 'phishing']):
-         risk_factors.append("OpenAI flagged content.")
+    # *** Check Gemini result ***
+    if isinstance(gemini_result, dict) and gemini_result.get('analysis') and any(w in gemini_result['analysis'].lower() for w in ['medium', 'high', 'suspicious', 'scam', 'phishing', 'risk']):
+         risk_factors.append("Gemini flagged content.")
+    elif isinstance(gemini_result, dict) and gemini_result.get('error'):
+         risk_factors.append(f"Gemini analysis error: {gemini_result['error']}")
 
-    # Check sender domain results (adapt keys if your function returns different ones)
-    if sender_domain_analysis:
-        if sender_domain_analysis.get('error'):
-            risk_factors.append(f"Sender domain check error: {sender_domain_analysis['error']}")
-        # Example: Check if WHOIS data suggests a new domain (assuming 'whois' contains structured data like before)
-        whois_data = sender_domain_analysis.get('whois')
-        if isinstance(whois_data, dict) and whois_data.get('warning'): # Check your actual whois result structure
-             risk_factors.append(f"Sender domain issue: {whois_data['warning']}")
-        # Example: Check SPF/DMARC results (check your actual result format)
-        if 'fail' in str(sender_domain_analysis.get('spf', '')).lower():
-             risk_factors.append("Sender domain SPF potentially failing.")
-        # Add DMARC policy check based on your function's output format
-        # if sender_domain_analysis.get('dmarc_policy') != 'Strict...':
-        #      risk_factors.append("Sender DMARC policy not strict.")
 
-    # Check link results
+    # (Checks for sender domain and links remain the same conceptually,
+    # but remember to adapt them based on the keys YOUR check_link_details returns)
+    if isinstance(sender_domain_analysis, dict):
+        if sender_domain_analysis.get('error'): risk_factors.append(f"Sender domain check error: {sender_domain_analysis['error']}")
+        whois_info = sender_domain_analysis.get('whois') # Adapt key if needed
+        if isinstance(whois_info, dict) and whois_info.get('warning'): risk_factors.append(f"Sender domain issue: {whois_info['warning']}") # Adapt key if needed
+        if 'fail' in str(sender_domain_analysis.get('spf', '')).lower(): risk_factors.append("Sender SPF potentially failing.") # Adapt key if needed
+
     for link, analysis in link_analysis_results.items():
-         if analysis:
-            domain_checked = analysis.get('domain', link) # Use domain from results if available
-            if analysis.get('error'):
-                risk_factors.append(f"Link check error for {domain_checked}: {analysis['error']}")
-            link_whois = analysis.get('whois')
-            if isinstance(link_whois, dict) and link_whois.get('warning'): # Check your actual whois result structure
-                risk_factors.append(f"Link domain issue ({domain_checked}): {link_whois['warning']}")
-            # Add more checks based on link analysis results (SPF, DMARC of link domains?)
+         if isinstance(analysis, dict):
+             domain_key = analysis.get('domain', link)
+             if analysis.get('error'): risk_factors.append(f"Link check error ({domain_key}): {analysis['error']}")
+             link_whois = analysis.get('whois') # Adapt key if needed
+             if isinstance(link_whois, dict) and link_whois.get('warning'): risk_factors.append(f"Link domain issue ({domain_key}): {link_whois['warning']}") # Adapt key if needed
 
-    if risk_factors:
-        final_report["overall_assessment"] = f"Potential Risk Detected. Factors: {'; '.join(risk_factors)}"
-    else:
-        final_report["overall_assessment"] = "Initial checks suggest low risk, but requires functional 'check_link_details' and careful review."
+    if risk_factors: final_report["overall_assessment"] = f"Potential Risk Detected. Factors: {'; '.join(risk_factors)}"
+    else: final_report["overall_assessment"] = "Initial checks suggest low risk, review details."
 
     logging.info("Email analysis complete.")
     return final_report
@@ -350,86 +336,61 @@ def check_email_safety(email_filepath=None, email_content_str=None):
 
 # --- Example Usage ---
 if __name__ == "__main__":
-    print("Starting email checker examples...")
-    print("NOTE: The 'check_link_details' function needs your actual implementation.")
+    print("\n--- NOTE: Ensure you have pasted your 'check_link_details' function above! ---")
+    print("--- NOTE: Ensure 'gemini_key.txt' exists with your API key! ---")
 
     # --- Option 1: Analyze an email file ---
-    dummy_eml_content = """From: Spammer <spammer@3mku6ze.com>
+    dummy_eml_content = """From: Spammer <spammer@suspicious-domain.xyz>
 To: You <you@example.com>
 Subject: Urgent Action Required! Update Your Account!
 
-Dear Valued Customer,
-
-We detected unusual activity on your account. Please click the link below immediately to verify your identity and prevent account suspension.
-
-Click here: https://totally-legit-update-portal.suspicious-domain.xyz/login?session=bad123
-
-Failure to do so within 24 hours will result in permanent closure. Also check www.google.com for comparison.
-
-Sincerely,
-Your Bank Security Team (Maybe)
+Dear Valued Customer, Click https://totally-legit-update-portal.suspicious-domain.xyz/login
+Failure to act now results in suspension! Very urgent!
 """
-    dummy_eml_path = "test_email.eml"
+    dummy_eml_path = "test_email_gemini.eml"
     try:
-        with open(dummy_eml_path, "w") as f:
-            f.write(dummy_eml_content)
+        with open(dummy_eml_path, "w") as f: f.write(dummy_eml_content)
         logging.info(f"Created dummy email file: {dummy_eml_path}")
 
-        print(f"\n--- Analyzing Email File ({dummy_eml_path}) ---")
+        print("\n--- Analyzing Email File ---")
         analysis_result_file = check_email_safety(email_filepath=dummy_eml_path)
-
-        import json
         print(json.dumps(analysis_result_file, indent=2, default=str))
-
-        # os.remove(dummy_eml_path) # Keep file for inspection if needed
+        # os.remove(dummy_eml_path)
 
     except Exception as e:
         print(f"\nError during file analysis example: {e}")
-        logging.exception("Error in file analysis example block")
+        print("Check 'check_link_details' implementation and Gemini setup.")
 
 
     # --- Option 2: Analyze an email string ---
-    print("\n--- Analyzing Email String (Phishing Example) ---")
-    email_string_content = """Return-Path: <bounce@notification.paypal.com>
-From: PayPal <service@paypal.com>
-Subject: Your account needs immediate attention
+    print("\n--- Analyzing Email String (Known Bad Example) ---")
+    email_string_content = """From: PayPal <service@paypal-security-update-center.com>
+Subject: Issue with billing - Action Required
 
-Hello Customer,
-
-There seems to be an issue with your PayPal account billing information.
-Please log in securely using the button below to update your details:
-
-<a href="http://paypal-security-update-center.com/verify">Update Now</a>
-
-Thanks,
-PayPal Support Team
-(This is a known phishing example domain)
+Hello valued member, Login here urgently <a href="http://paypal-security-update-center.com/verify">Update Now</a> to avoid fees.
 """
     try:
         analysis_result_string = check_email_safety(email_content_str=email_string_content)
-        import json
         print(json.dumps(analysis_result_string, indent=2, default=str))
     except Exception as e:
         print(f"\nError during string analysis example: {e}")
-        logging.exception("Error in string analysis example block")
+        print("Check 'check_link_details' implementation and Gemini setup.")
 
-
-    # --- Option 3: Test with a known good sender ---
+    # --- Option 3: Analyze a legit example ---
     print("\n--- Analyzing Email String (Legit Example) ---")
     email_string_legit = """From: Google <no-reply@google.com>
-Subject: Security alert
+Subject: Security alert for Your Google Account
 
-We detected a new sign-in to your Google Account.
-
-Check activity: https://myaccount.google.com/notifications
+Hi User,
+We detected a new sign-in to your Google Account on a new device. If this was you, you can ignore this email.
+If you don't recognize this activity, please check your recently used devices now: https://myaccount.google.com/notifications
 
 Thank you,
 The Google Accounts team
 """
     try:
         analysis_result_legit = check_email_safety(email_content_str=email_string_legit)
-        import json
         print(json.dumps(analysis_result_legit, indent=2, default=str))
     except Exception as e:
-        print(f"\nError during legit string analysis example: {e}")
-        logging.exception("Error in legit string analysis example block")
+        print(f"\nError during legit analysis example: {e}")
+        print("Check 'check_link_details' implementation and Gemini setup.")
