@@ -14,7 +14,7 @@ from googleapiclient.errors import HttpError
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # Read-only access
 TOKEN_PATH = 'token.json'
-CREDENTIALS_PATH = 'client_secret.json'
+CREDENTIALS_PATH = 'D:\Code\Python\Phishing_Logic\backend\app\services\email_services\client_secret.json'
 MAX_RESULTS = 5 # How many emails to fetch
 
 # --- Functions ---
