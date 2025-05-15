@@ -50,7 +50,7 @@ def test_authenticate_with_invalid_token(tmp_path):
 def test_list_inbox_messages_no_messages():
     service = MagicMock()
     service.users().messages().list().execute.return_value = {"messages": []}
-    result = email_reader.list_inbox_messages(service)
+    result = email_reader.list_inbox_messages_most_recent(service)
     assert result == []
 
 
@@ -68,7 +68,7 @@ def test_list_inbox_messages_some_messages():
             'snippet': 'Hello',
             'body': 'Body text'
         }
-        result = email_reader.list_inbox_messages(service)
+        result = email_reader.list_inbox_messages_most_recent(service)
         assert len(result) == 2
         assert result[0]['id'] == '123'
 
@@ -163,6 +163,6 @@ def test_get_message_details_http_error():
 def test_list_inbox_messages_exception():
     service = MagicMock()
     service.users().messages().list.side_effect = Exception("Boom")
-    result = email_reader.list_inbox_messages(service)
+    result = email_reader.list_inbox_messages_most_recent(service)
     assert result == []
 

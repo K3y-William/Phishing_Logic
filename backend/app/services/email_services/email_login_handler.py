@@ -2,7 +2,7 @@
 # Login, logout
 import os.path
 import base64
-from email import message_from_bytes # For parsing email content
+from backend.app.services.llm_handler import analyze_content_with_gemini
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -13,9 +13,9 @@ from googleapiclient.errors import HttpError
 # --- Configuration ---
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # Read-only access
-TOKEN_PATH = 'token.json'
-CREDENTIALS_PATH = 'D:\Code\Python\Phishing_Logic\backend\app\services\email_services\client_secret.json'
-MAX_RESULTS = 5 # How many emails to fetch
+TOKEN_PATH = '../token.json'
+CREDENTIALS_PATH = 'client_secret.json'
+MAX_RESULTS = 10 # How many emails to fetch
 
 # --- Functions ---
 
@@ -146,7 +146,7 @@ def get_message_details(service, msg_id):
             'from': sender,
             'date': date,
             'snippet': message.get('snippet', 'No Snippet'),
-            'body': body_text[:500] + ('...' if len(body_text) > 500 else '') # Truncate long bodies
+            'body': body_text[:3000] + ('...' if len(body_text) > 3000 else '') # Truncate long bodies
         }
 
     except HttpError as error:
@@ -157,7 +157,7 @@ def get_message_details(service, msg_id):
         return None
 
 
-def list_inbox_messages(service, max_results=5):
+def list_inbox_messages_most_recent(service, max_results=10):
     """Lists messages in the user's inbox."""
     try:
         # Call the Gmail API to fetch INBOX messages
@@ -175,21 +175,23 @@ def list_inbox_messages(service, max_results=5):
         else:
             print(f"Found {len(messages)} messages (showing up to {max_results}):\n")
             message_details_list = []
+            # x = {}
+            # x["id'] = {"te"}
             for message_stub in messages:
                 msg_id = message_stub['id']
                 print(f"Fetching details for message ID: {msg_id}...")
                 details = get_message_details(service, msg_id)
                 if details:
                     message_details_list.append(details)
-                    print("-" * 30)
-                    print(f"  ID: {details['id']}")
-                    print(f"  From: {details['from']}")
-                    print(f"  Subject: {details['subject']}")
-                    print(f"  Date: {details['date']}")
-                    print(f"  Snippet: {details['snippet']}")
+                    # print("-" * 30)
+                    # print(f"  ID: {details['id']}")
+                    # print(f"  From: {details['from']}")
+                    # print(f"  Subject: {details['subject']}")
+                    # print(f"  Date: {details['date']}")
+                    # print(f"  Snippet: {details['snippet']}")
                     # Uncomment to print the first 500 chars of the body
                     # print(f"  Body (Preview):\n{details['body']}")
-                    print("-" * 30 + "\n")
+                    # print("-" * 30 + "\n")
             return message_details_list
 
     except HttpError as error:
@@ -200,13 +202,20 @@ def list_inbox_messages(service, max_results=5):
         print(f'An unexpected error occurred listing messages: {e}')
         return []
 
-# --- Main Execution ---
-if __name__ == '__main__':
+
+def email_login_analyze():
     print("Attempting to authenticate and connect to Gmail...")
     gmail_service = authenticate_gmail()
 
     if gmail_service:
         print("\nAuthentication successful. Fetching inbox messages...")
-        list_inbox_messages(gmail_service, max_results=MAX_RESULTS)
+        messages = list_inbox_messages_most_recent(gmail_service, max_results=MAX_RESULTS)
+        # call llm analyze
+        for x in range(len(messages)):
+            print(messages[x])
+            print(analyze_content_with_gemini(messages[x]['subject'],messages[x]['snippet'],messages[x]['from']))
     else:
         print("\nCould not connect to Gmail API. Exiting.")
+# --- Main Execution ---
+if __name__ == '__main__':
+    email_login_analyze()

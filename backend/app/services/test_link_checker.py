@@ -8,7 +8,7 @@ import datetime
 from unittest.mock import patch, MagicMock, PropertyMock
 
 # Import the function to test
-from domain_check import check_link_details # <-- *** RENAME 'your_module' to the actual filename ***
+from backend.app.services.domain_check import check_link_details
 
 # --- Mock Data and Objects ---
 

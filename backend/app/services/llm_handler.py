@@ -14,7 +14,7 @@ import json # Added for printing results nicely in examples
 # import socket
 # --- Keep other necessary imports ---
 import time # Example if you need delays
-from domain_check import check_link_details
+from backend.app.services.domain_check import check_link_details
 # --- Google Gemini ---
 try:
     import google.generativeai as genai
@@ -26,7 +26,7 @@ except ImportError:
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-GEMINI_API_KEY_FILE = "gemini_key.txt" # Use a separate file for Gemini key
+GEMINI_API_KEY_FILE = '/Users/scottwang/PycharmProjects/Phishing_Logic/backend/app/services/key.txt'  # Use a separate file for Gemini key
 
 # --- Gemini API Setup ---
 def get_gemini_key(filepath=GEMINI_API_KEY_FILE):
@@ -53,9 +53,9 @@ gemini_model = None # Initialize model variable
 if genai and gemini_api_key:
     try:
         genai.configure(api_key=gemini_api_key)
-        # Use the free 'gemini-pro' model
-        gemini_model = genai.GenerativeModel('gemini-pro')
-        logging.info("Gemini client configured and model loaded successfully ('gemini-pro').")
+        # Use the free 'gemini' model
+        gemini_model = genai.GenerativeModel()
+        logging.info("Gemini client configured and model loaded successfully ('gemini').")
     except Exception as e:
         logging.error(f"Failed to configure Gemini client or load model: {e}")
         gemini_model = None # Ensure model is None if setup fails
@@ -135,7 +135,7 @@ def extract_links(text):
     else: return []
 
 # --- Gemini Content Analysis ---
-def analyze_content_with_gemini(subject, body):
+def analyze_content_with_gemini(subject, body, sender):
     """Uses Gemini API to analyze email content for scam characteristics."""
     if not gemini_model: # Check if the model object was successfully created
         return {"error": "Gemini client not initialized or model not loaded. Cannot analyze content."}
@@ -159,11 +159,15 @@ def analyze_content_with_gemini(subject, body):
     - Unexpected attachments or links, especially if domains look suspicious
     - Offers that seem too good to be true (e.g., lottery wins, unexpected inheritances)
 
-    Based on these factors, provide:
-    1. A brief summary of your findings.
-    2. A clear risk assessment level: Low, Medium, or High.
-    3. A concise explanation for your assessment.
+    Based on these factors, for EACH email, provide:
+    1. A clear risk assessment level: Very Low, Low, Medium, High, Very High.
+    2. A brief summary of your findings.
+    
+    Note:
+    Judge the content objectively, be conservative, do not be oversensitive, focus on the main issue that is suspicious
 
+    Sender: {sender}
+    
     Subject: {subject}
 
     Body:
