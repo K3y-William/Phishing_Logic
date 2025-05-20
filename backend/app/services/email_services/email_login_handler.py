@@ -2,6 +2,7 @@
 # Login, logout
 import os.path
 import base64
+import textwrap
 from datetime import datetime, timedelta
 
 from backend.app.services.llm_handler import analyze_content_with_gemini
@@ -363,6 +364,78 @@ def print_message_summary_list(messages_list):
     print("-" * 30 + "\n")
 
 
+def format_analysis_output_with_wrapping(data_dict, max_line_width=75):
+    """
+    Formats the analysis text from the input dictionary for better readability,
+    wrapping long lines in the body content.
+
+    Args:
+        data_dict (dict): A dictionary expected to have an 'analysis' key
+                          with a string value containing the analysis text.
+        max_line_width (int): The maximum width for lines in the body.
+    """
+    if 'analysis' not in data_dict:
+        print("Error: 'analysis' key not found in the input dictionary.")
+        return
+
+    analysis_text = data_dict['analysis']
+    lines = analysis_text.split('\n')
+
+    print("=" * 80)
+    print("Phishing Email Analysis Report".center(80))
+    print("=" * 80)
+
+    in_bullet_section = False  # To handle multi-line bullet content indentation
+
+    for line in lines:
+        stripped_line = line.strip()
+
+        if not stripped_line:  # Handles blank lines (originally \n\n)
+            print()
+            in_bullet_section = False
+            continue
+
+        # Main Headers (like "Risk Assessment:", "Summary of Findings:")
+        if stripped_line.startswith('**') and stripped_line.endswith('**:'):
+            header_text = stripped_line.replace('**', '').strip().upper()
+            print(f"\n{header_text}")
+            print("-" * len(header_text))
+            in_bullet_section = False
+        elif stripped_line.startswith('**') and ':' in stripped_line:  # For "Risk Assessment:** High"
+            parts = stripped_line.split(':', 1)
+            header_part = parts[0].replace('**', '').strip().upper()
+            value_part = parts[1].strip()
+            print(f"\n{header_part}: {value_part}")
+            print("-" * (len(header_part) + len(value_part) + 2))
+            in_bullet_section = False
+        # Bullet Points
+        elif stripped_line.startswith('* '):
+            bullet_content = stripped_line[2:]
+            # Wrap the content of the bullet point.
+            # The first line of the wrapped content gets the "  - " prefix.
+            # Subsequent wrapped lines get "    " prefix for alignment.
+            print(textwrap.fill(bullet_content,
+                                width=max_line_width,
+                                initial_indent="  - ",
+                                subsequent_indent="    "))
+            in_bullet_section = True
+        # Regular paragraph lines OR continuation of bullet points (that were on a new line in original input)
+        else:
+            text_to_wrap = stripped_line # Already stripped
+            if in_bullet_section:
+                # This is a continuation of the previous bullet point.
+                # Indent consistently with wrapped bullet content.
+                print(textwrap.fill(text_to_wrap,
+                                    width=max_line_width,
+                                    initial_indent="    ",  # Subsequent lines of a bullet item
+                                    subsequent_indent="    "))
+            else:
+                # This is a general paragraph line, not part of a bullet list.
+                print(textwrap.fill(text_to_wrap, width=max_line_width))
+
+    print("=" * 80)
+
+
 def analyze_email_recent(gmail_service):
     """Analyze most recent emails"""
     messages = list_inbox_messages_most_recent(gmail_service, max_results=MAX_RESULTS)
@@ -376,7 +449,7 @@ def analyze_email_recent(gmail_service):
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
+        format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
 
 def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=None, end_date=None,
@@ -392,7 +465,7 @@ def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=N
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
+        format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
 def email_login():
     """Login gmail service"""
