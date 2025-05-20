@@ -33,3 +33,4 @@ scapy
 # If you add functionality to fetch the URL content, add 'requests'.
 
 flask
+flask_cors
