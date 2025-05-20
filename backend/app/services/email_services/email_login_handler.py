@@ -161,7 +161,7 @@ def get_message_details(service, msg_id):
 
 
 def list_inbox_messages_most_recent(service, max_results=5):
-    """Lists messages in the user's inbox."""
+    """Lists most recent messages in the user's inbox."""
     try:
         # Call the Gmail API to fetch INBOX messages
         results = service.users().messages().list(
@@ -364,6 +364,7 @@ def print_message_summary_list(messages_list):
 
 
 def analyze_email_recent(gmail_service):
+    """Analyze most recent emails"""
     messages = list_inbox_messages_most_recent(gmail_service, max_results=MAX_RESULTS)
     # call llm analyze
     for x in range(len(messages)):
@@ -375,12 +376,13 @@ def analyze_email_recent(gmail_service):
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['snippet'], sender_domain_analysis,
+        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
 
 def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=None, end_date=None,
                              has_attachment=None, custom_query_part=None,
                              max_results=5, label_ids=None):
+    """Analyze emails filtered by a set of params"""
     messages = search_messages_combined(gmail_service,sender,subject,start_date,end_date,has_attachment,custom_query_part,max_results,label_ids)
     for x in range(len(messages)):
         links = extract_links_without_scheme(str(messages[x]))
@@ -390,9 +392,10 @@ def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=N
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['snippet'], sender_domain_analysis,
+        print(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
 def email_login():
+    """Login gmail service"""
     print("Attempting to authenticate and connect to Gmail...")
     gmail_service = authenticate_gmail()
 
