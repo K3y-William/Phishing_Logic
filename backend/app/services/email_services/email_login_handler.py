@@ -218,8 +218,8 @@ def email_login_analyze():
             for l in links:
                 print(check_link_details(l))
             sender_domain = get_domain_from_email_format(messages[x]['from'])
-            print(check_link_details(sender_domain))
-            print(analyze_content_with_gemini(messages[x]['subject'],messages[x]['snippet'],messages[x]['from']))
+            sender_domain_analysis = check_link_details(sender_domain)
+            print(analyze_content_with_gemini(messages[x]['subject'],messages[x]['snippet'],sender_domain_analysis))
     else:
         print("\nCould not connect to Gmail API. Exiting.")
 # --- Main Execution ---
