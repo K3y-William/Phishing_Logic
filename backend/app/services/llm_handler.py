@@ -135,7 +135,7 @@ def extract_links(text):
     else: return []
 
 # --- Gemini Content Analysis ---
-def analyze_content_with_gemini(subject, body, sender_info):
+def analyze_content_with_gemini(subject, body, sender_info, other_links):
     """Uses Gemini API to analyze email content for scam characteristics."""
     if not gemini_model: # Check if the model object was successfully created
         return {"error": "Gemini client not initialized or model not loaded. Cannot analyze content."}
@@ -167,6 +167,8 @@ def analyze_content_with_gemini(subject, body, sender_info):
     Judge the content objectively, be conservative, do not be oversensitive, focus on the main issue that is suspicious
 
     Sender email domain information: {sender_info}
+    
+    Information of links found in the email: {other_links}
     
     Subject: {subject}
 

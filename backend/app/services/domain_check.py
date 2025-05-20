@@ -50,48 +50,64 @@ def get_domain_from_email_format(email_string):
         return None
 
 
-def extract_links(text):
+def remove_duplicates_ordered_set_trick(link_list):
     """
-    Extracts URLs starting with http:// or https:// from a given string.
+    Removes duplicate links from a list while preserving the order
+    of the first appearance of each link.
+    This method uses dict.fromkeys(), which in Python 3.7+ preserves
+    insertion order. For Python 3.6 and earlier, dicts were unordered,
+    so for those versions, use the 'manual_iteration' method for order.
+
+    Args:
+        link_list (List[str]): A list of link strings, possibly with duplicates.
+
+    Returns:
+        List[str]: A new list with duplicate links removed, order preserved.
+    """
+    if not link_list:
+        return []
+    # dict.fromkeys creates a dictionary with unique keys from the iterable.
+    # Since Python 3.7, dictionary keys maintain insertion order.
+    # Converting it back to a list gives unique items in order.
+    return list(dict.fromkeys(link_list))
+
+def extract_links_without_scheme(text):
+    """
+    Extracts URLs from a given string and returns them without the
+    leading "http://" or "https://://" scheme.
 
     Args:
         text (str): The string to search for links.
 
     Returns:
-        list: A list of found URLs (strings). Returns an empty list if no links are found.
+        list: A list of found URLs (strings) without the scheme.
+              Returns an empty list if no links are found.
     """
-    # This regex is a common one for matching URLs. It's not perfect for ALL possible
-    # URL variations, but it covers most common cases.
-    # It looks for:
-    # - http:// or https://
-    # - Followed by a domain name (alphanumeric, hyphens, dots)
-    # - Optionally, port numbers, paths, query strings, and fragments
-    # Breakdown:
-    # r"https?://" : matches "http://" or "https://"
-    # r"(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" :
-    #   This part matches the main body of the URL (domain, path, query, etc.).
-    #   It allows:
-    #   - a-zA-Z: letters
-    #   - 0-9: numbers
-    #   - $-_@.&+: common symbols in URLs
-    #   - !*\\(\\),: other symbols (escaped parentheses)
-    #   - (?:%[0-9a-fA-F][0-9a-fA-F]): percent-encoded characters (e.g., %20 for space)
-    #   The `+` means one or more of these characters.
-    #   The `(?:...)` is a non-capturing group.
+    # Regex explanation:
+    # r"https?://" : Matches "http://" or "https://" (but we won't include this in the final result directly from findall)
+    # r"("         : Start of a capturing group. re.findall will return the content of this group.
+    #   (?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|  # domain...
+    #   localhost|  # localhost...
+    #   \d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})  # ...or ip
+    #   (?::\d+)?  # optional port
+    #   (?:/?|[/?]\S+)  # optional path, query, fragment
+    # r")"         : End of the capturing group.
     url_pattern = re.compile(
-        r"https?://"  # Match http or https
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-        r"localhost|"  # localhost...
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-        r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)",  # optional path
-        re.IGNORECASE  # Make the regex case-insensitive
+        r"https?://"  # Match http or https (this part is NOT in the capturing group)
+        r"("          # Start of the capturing group (this is what findall will return)
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"
+        r"localhost|"
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+        r"(?::\d+)?"
+        r"(?:/?|[/?]\S+)"
+        r")",         # End of the capturing group
+        re.IGNORECASE
     )
-    # A simpler, but often effective regex:
-    # url_pattern = re.compile(r"https?://[^\s/$.?#].[^\s]*", re.IGNORECASE)
 
-    links = re.findall(url_pattern, text)
-    return links
+    # re.findall() with a pattern containing one capturing group will return
+    # a list of strings, where each string is the content of that group.
+    links_without_scheme = re.findall(url_pattern, text)
+    return remove_duplicates_ordered_set_trick(links_without_scheme)
 
 
 def check_link_details(url_string, dkim_selectors=None):
@@ -308,42 +324,3 @@ def check_link_details(url_string, dkim_selectors=None):
 
     return results
 
-# --- Example Usage ---
-if __name__ == "__main__":
-    # Example 1: Google (usually has SPF, DMARC, DKIM needs selectors)
-    url1 = "https://www.google.com"
-    # You might know common selectors like 'google' or find them in email headers
-    google_selectors = ['20230601'] # Google uses date-based selectors, this one is current as of mid-2024
-    print(f"--- Checking: {url1} ---")
-    details1 = check_link_details(url1, dkim_selectors=google_selectors)
-    import json # Use json for pretty printing the dictionary
-    print(json.dumps(details1, indent=2))
-    print("-" * 30)
-
-    # Example 2: A domain that might lack some records
-    url2 = "https://3mku6ze.com" # Often has basic WHOIS but maybe not SPF/DMARC
-    print(f"--- Checking: {url2} ---")
-    details2 = check_link_details(url2)
-    print(json.dumps(details2, indent=2))
-    print("-" * 30)
-
-    # Example 3: Invalid URL
-    url3 = "not_a_valid_url"
-    print(f"--- Checking: {url3} ---")
-    details3 = check_link_details(url3)
-    print(json.dumps(details3, indent=2))
-    print("-" * 30)
-
-    # Example 4: Domain likely not existing
-    url4 = "https://thisshouldreallynotexist12345abc.org"
-    print(f"--- Checking: {url4} ---")
-    details4 = check_link_details(url4)
-    print(json.dumps(details4, indent=2))
-    print("-" * 30)
-
-    # Example 5: URL with port
-    url5 = "https://localhost:8080" # Domain is 'localhost'
-    print(f"--- Checking: {url5} ---")
-    details5 = check_link_details(url5) # Expect failures for public lookups on localhost
-    print(json.dumps(details5, indent=2))
-    print("-" * 30)
