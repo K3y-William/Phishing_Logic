@@ -3,6 +3,7 @@
 import os.path
 import base64
 from backend.app.services.llm_handler import analyze_content_with_gemini
+from backend.app.services.domain_check import extract_links,get_domain_from_email_format, check_link_details
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -213,6 +214,11 @@ def email_login_analyze():
         # call llm analyze
         for x in range(len(messages)):
             print(messages[x])
+            links = extract_links(messages[x]['snippet'])
+            for l in links:
+                print(check_link_details(l))
+            sender_domain = get_domain_from_email_format(messages[x]['from'])
+            print(check_link_details(sender_domain))
             print(analyze_content_with_gemini(messages[x]['subject'],messages[x]['snippet'],messages[x]['from']))
     else:
         print("\nCould not connect to Gmail API. Exiting.")

@@ -3,9 +3,96 @@ import dns.resolver
 import dns.exception
 from urllib.parse import urlparse
 import logging
+import re
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def get_domain_from_email_format(email_string):
+    """
+    Extracts the domain name from an email address string
+    in the format: "Name <local_part@domain.com>".
+
+    Args:
+        email_string (str): The string containing the email address.
+                            Expected format: "Optional Name <email@domain.com>"
+                            or just "<email@domain.com>".
+
+    Returns:
+        str: The extracted domain name (e.g., "gmail.com").
+        None: If the email address or domain cannot be found in the expected format.
+    """
+    # Regex to find the content within angle brackets, then capture the domain part.
+    # Breakdown:
+    # <         : Matches the literal '<'
+    # [^@<>]+   : Matches one or more characters that are NOT '@', '<', or '>' (the local part)
+    # @         : Matches the literal '@'
+    # ([^<>@]+) : Capturing group 1. Matches one or more characters that are NOT '<', '>', or '@'
+    #             This is the domain part we want.
+    # >         : Matches the literal '>'
+    match = re.search(r"<[^@<>]+@([^<>@]+)>", email_string)
+
+    if match:
+        # group(0) is the whole match, e.g., "<jerrywilliams1041@gmail.com>"
+        # group(1) is the first captured group, e.g., "gmail.com"
+        return match.group(1)
+    else:
+        # Fallback: if the string is just an email like "test@example.com" (no name, no brackets)
+        # This part is an extension in case the input format is simpler.
+        # The problem specifically asked for "Name <email>", so the above regex is primary.
+        # If you only want to support the "Name <...>" format strictly, you can remove this else block.
+        parts = email_string.split('@')
+        if len(parts) == 2 and '.' in parts[1] and not ('<' in email_string or '>' in email_string):
+            # Basic validation for a domain (contains a dot, not part of the bracketed format)
+            # This check for '<' or '>' ensures we don't misinterpret a malformed bracketed string
+            return parts[1]
+        return None
+
+
+def extract_links(text):
+    """
+    Extracts URLs starting with http:// or https:// from a given string.
+
+    Args:
+        text (str): The string to search for links.
+
+    Returns:
+        list: A list of found URLs (strings). Returns an empty list if no links are found.
+    """
+    # This regex is a common one for matching URLs. It's not perfect for ALL possible
+    # URL variations, but it covers most common cases.
+    # It looks for:
+    # - http:// or https://
+    # - Followed by a domain name (alphanumeric, hyphens, dots)
+    # - Optionally, port numbers, paths, query strings, and fragments
+    # Breakdown:
+    # r"https?://" : matches "http://" or "https://"
+    # r"(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+" :
+    #   This part matches the main body of the URL (domain, path, query, etc.).
+    #   It allows:
+    #   - a-zA-Z: letters
+    #   - 0-9: numbers
+    #   - $-_@.&+: common symbols in URLs
+    #   - !*\\(\\),: other symbols (escaped parentheses)
+    #   - (?:%[0-9a-fA-F][0-9a-fA-F]): percent-encoded characters (e.g., %20 for space)
+    #   The `+` means one or more of these characters.
+    #   The `(?:...)` is a non-capturing group.
+    url_pattern = re.compile(
+        r"https?://"  # Match http or https
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
+        r"localhost|"  # localhost...
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+        r"(?::\d+)?"  # optional port
+        r"(?:/?|[/?]\S+)",  # optional path
+        re.IGNORECASE  # Make the regex case-insensitive
+    )
+    # A simpler, but often effective regex:
+    # url_pattern = re.compile(r"https?://[^\s/$.?#].[^\s]*", re.IGNORECASE)
+
+    links = re.findall(url_pattern, text)
+    return links
+
 
 def check_link_details(url_string, dkim_selectors=None):
     """
@@ -36,8 +123,9 @@ def check_link_details(url_string, dkim_selectors=None):
 
     # --- 1. Extract Domain from URL ---
     try:
-        parsed_url = urlparse(url_string)
-        domain = parsed_url.netloc
+        # parsed_url = urlparse(url_string)
+
+        domain = url_string
         # Remove port if present (e.g., example.com:8080)
         if ':' in domain:
             domain = domain.split(':')[0]
