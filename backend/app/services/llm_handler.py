@@ -26,7 +26,8 @@ except ImportError:
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-GEMINI_API_KEY_FILE = '/Users/scottwang/PycharmProjects/Phishing_Logic/backend/app/services/key.txt'  # Use a separate file for Gemini key
+base_dir = os.path.dirname(os.path.abspath(__file__))
+GEMINI_API_KEY_FILE = os.path.join(base_dir,'key.txt')  # Use a separate file for Gemini key
 
 # --- Gemini API Setup ---
 def get_gemini_key(filepath=GEMINI_API_KEY_FILE):
