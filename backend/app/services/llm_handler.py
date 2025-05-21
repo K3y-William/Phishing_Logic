@@ -162,6 +162,7 @@ def analyze_content_with_gemini(subject, body, sender_info, other_links):
     Based on these factors, for EACH email, provide:
     1. A clear risk assessment level: Very Low, Low, Medium, High, Very High.
     2. A brief summary of your findings.
+    3. Recommended responding actions.
     
     Note:
     Judge the content objectively, be conservative, do not be oversensitive, focus on the main issue that is suspicious
