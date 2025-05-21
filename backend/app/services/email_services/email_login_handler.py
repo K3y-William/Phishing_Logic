@@ -449,12 +449,17 @@ def analyze_email_recent(gmail_service):
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
-                                          links_info))
+        each_ana = analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
+                                          links_info)
+        messages[x].setdefault( 'analysis', each_ana)
+        format_analysis_output_with_wrapping(each_ana)
 
-def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=None, end_date=None,
-                             has_attachment=None, custom_query_part=None,
-                             max_results=5, label_ids=None):
+    return messages
+
+
+def filter_analyze_email(gmail_service, sender=None, subject=None, start_date=None, end_date=None,
+                         has_attachment=None, custom_query_part=None,
+                         max_results=5, label_ids=None):
     """Analyze emails filtered by a set of params"""
     messages = search_messages_combined(gmail_service,sender,subject,start_date,end_date,has_attachment,custom_query_part,max_results,label_ids)
     for x in range(len(messages)):
@@ -465,8 +470,28 @@ def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=N
             links_info.append(check_link_details(l))
         sender_domain = get_domain_from_email_format(messages[x]['from'])
         sender_domain_analysis = check_link_details(sender_domain)
-        format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
-                                          links_info))
+        each_ana = analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
+                                               links_info)
+        messages[x].setdefault('analysis', each_ana)
+        format_analysis_output_with_wrapping(each_ana)
+    return messages
+
+def analyze_specific_email(gmail_service, lablel_id):
+    message = get_message_details(gmail_service,lablel_id)
+    links = extract_links_without_scheme(str(message))
+    links_info = []
+
+    for l in links:
+        links_info.append(check_link_details(l))
+    sender_domain = get_domain_from_email_format(message['from'])
+    sender_domain_analysis = check_link_details(sender_domain)
+    each_ana = analyze_content_with_gemini(message['subject'], message['body'], sender_domain_analysis,
+                                           links_info)
+    message.setdefault('analysis', each_ana)
+    format_analysis_output_with_wrapping(each_ana)
+    return message
+
+
 def email_login():
     """Login gmail service"""
     print("Attempting to authenticate and connect to Gmail...")
@@ -482,4 +507,4 @@ def email_login():
 if __name__ == '__main__':
     gmail_service = email_login()
     # analyze_email_recent(gmail_service)
-    analyze_email_specific(gmail_service = gmail_service, subject = "Boss\'s Message")
+    filter_analyze_email(gmail_service = gmail_service, subject ="Boss\'s Message")
