@@ -1,62 +1,71 @@
 import React, { useState, useEffect } from 'react';
-import { FlatList, Text, TouchableOpacity, Alert } from 'react-native';
+import { FlatList, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 
 export default function Tab() {
   const [data, setData] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Async function to fetch emails from the backend
   async function fetchEmails() {
+    setLoading(true);
     try {
       const response = await fetch('http://localhost:5000/scan/list', {
-        credentials: 'include', // If your Flask app uses session cookies
+        credentials: 'include',
       });
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
+      if (!response.ok) throw new Error('Network response was not ok');
       const result = await response.json();
-
-      // Assuming backend returns { messages: [ { id, title }, ... ] }
       setData(result.messages || []);
     } catch (error) {
       console.error('Fetch operation failed:', error);
+    } finally {
+      setLoading(false);
     }
   }
 
-  // Poll every 2 minutes
   useEffect(() => {
-    fetchEmails(); // Initial fetch on mount
-
-    const intervalId = setInterval(() => {
-      fetchEmails();
-    }, 2 * 60 * 1000); // 2 minutes
-
-    return () => clearInterval(intervalId); // Clean up on unmount
+    fetchEmails();
+    const intervalId = setInterval(fetchEmails, 2 * 60 * 1000);
+    return () => clearInterval(intervalId);
   }, []);
 
-  const handlePress = (item) => {
-    Alert.alert('You pressed', item.title);
+  const renderItem = ({ item }) => {
+    const isExpanded = expandedId === item.id;
+    return (
+      <View style={{ marginVertical: 2 }}>
+        <TouchableOpacity
+          onPress={() => setExpandedId(item.id)}
+          disabled={isExpanded}
+          style={{ padding: 10, backgroundColor: '#eee' }}
+        >
+          <Text>{item.from} — {item.subject}</Text>
+        </TouchableOpacity>
+        {isExpanded && (
+          <View style={{ padding: 10, backgroundColor: '#f9f9f9' }}>
+            <Text>{item.scanOutput}</Text>
+            <TouchableOpacity onPress={() => setExpandedId(null)}>
+              <Text style={{ color: 'blue', marginTop: 8 }}>Minimize</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
   };
-
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={{
-        padding: 10,
-        backgroundColor: '#4CAF50',
-        marginVertical: 2,
-        borderRadius: 10,
-      }}
-      onPress={() => handlePress(item)}
-    >
-      <Text style={{ color: 'white', fontSize: 16 }}>{item.title}</Text>
-    </TouchableOpacity>
-  );
 
   return (
     <FlatList
       data={data}
-      keyExtractor={(item) => item.id}
+      keyExtractor={item => item.id}
       renderItem={renderItem}
-      ListEmptyComponent={<Text style={{ padding: 20, textAlign: 'center' }}>No emails found.</Text>}
+      ListEmptyComponent={
+        loading ? (
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <ActivityIndicator size="large" />
+            <Text style={{ marginTop: 12 }}>Scanning inbox...</Text>
+          </View>
+        ) : (
+          <Text style={{ padding: 20, textAlign: 'center' }}>No emails found.</Text>
+        )
+      }
     />
   );
 }

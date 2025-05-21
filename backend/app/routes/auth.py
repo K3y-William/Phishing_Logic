@@ -8,8 +8,9 @@ bp = Blueprint('auth', __name__, url_prefix='/auth')
 def login():
     try:
         service = authenticate_gmail()
+        assert(service is not None)
     except Exception as e:
-        return jsonify(error=str(e)), 500
+        return jsonify(error="fail to create gmail service"), 500
 
     try:
         session['authenticated'] = True
