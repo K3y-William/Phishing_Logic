@@ -470,7 +470,7 @@ def search_analyze_email(gmail_service,sender=None, subject=None, start_date=Non
                                           links_info))
 
 
-def search_analyze_email(gmail_service, msg_id):
+def analyze_email(gmail_service, msg_id):
     message = get_message_details(gmail_service, msg_id)
 
     links = extract_links_without_scheme(str(message))
