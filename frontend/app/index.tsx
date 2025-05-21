@@ -13,10 +13,9 @@ export default function LoginScreen() {
 
   const handleLoginPress = async () => {
     if (Platform.OS === 'web') {
-      setLoading(true);
-      console.log("This is a test log message");
+      setLoading(true); 
       try {
-        const response = await fetch(BACKEND_LOGIN_URL);
+        const response = await fetch(BACKEND_LOGIN_URL, { credentials: 'include' });
         const data = await response.json();
 
         if (data.message === 'Login successful') {
