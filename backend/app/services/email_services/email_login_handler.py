@@ -143,7 +143,7 @@ def get_message_details(service, msg_id):
                     return "" # No suitable body found in these parts
 
                 body_text = find_body_in_parts(parts)
-
+#########################  EMAIL DETAILS     #################################################
         return {
             'id': msg_id,
             'subject': subject,
@@ -152,7 +152,7 @@ def get_message_details(service, msg_id):
             'snippet': message.get('snippet', 'No Snippet'),
             'body': body_text[:3000] + ('...' if len(body_text) > 3000 else '') # Truncate long bodies
         }
-
+###############################################################################################
     except HttpError as error:
         print(f'An error occurred getting message {msg_id}: {error}')
         return None
@@ -452,10 +452,11 @@ def analyze_email_recent(gmail_service):
         format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
 
-def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=None, end_date=None,
+def search_analyze_email(gmail_service,sender=None, subject=None, start_date=None, end_date=None,
                              has_attachment=None, custom_query_part=None,
                              max_results=5, label_ids=None):
     """Analyze emails filtered by a set of params"""
+    # a list of custom email details, each element is a dictionary
     messages = search_messages_combined(gmail_service,sender,subject,start_date,end_date,has_attachment,custom_query_part,max_results,label_ids)
     for x in range(len(messages)):
         links = extract_links_without_scheme(str(messages[x]))
@@ -467,6 +468,22 @@ def analyze_email_specific(gmail_service,sender=None, subject=None, start_date=N
         sender_domain_analysis = check_link_details(sender_domain)
         format_analysis_output_with_wrapping(analyze_content_with_gemini(messages[x]['subject'], messages[x]['body'], sender_domain_analysis,
                                           links_info))
+
+
+def analyze_email(gmail_service, msg_id):
+    message = get_message_details(gmail_service, msg_id)
+
+    links = extract_links_without_scheme(str(message))
+    links_info = []
+
+    for l in links:
+        links_info.append(check_link_details(l))
+    sender_domain = get_domain_from_email_format(message['from'])
+    sender_domain_analysis = check_link_details(sender_domain)
+    format_analysis_output_with_wrapping(
+        analyze_content_with_gemini(message['subject'], message['body'], sender_domain_analysis, links_info))
+
+
 def email_login():
     """Login gmail service"""
     print("Attempting to authenticate and connect to Gmail...")
@@ -482,4 +499,4 @@ def email_login():
 if __name__ == '__main__':
     gmail_service = email_login()
     # analyze_email_recent(gmail_service)
-    analyze_email_specific(gmail_service = gmail_service, subject = "Boss\'s Message")
+    search_analyze_email(gmail_service = gmail_service, subject = "Boss\'s Message")
