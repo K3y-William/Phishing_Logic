@@ -1,5 +1,8 @@
-from flask import Blueprint, session, redirect, request, jsonify, current_app
-from backend.app.services.email_services.email_login_handler import authenticate_gmail
+from flask import Blueprint, session, jsonify, current_app
+#pathing can vary
+from app.services.email_services.email_login_handler import authenticate_gmail
+
+TOKEN_PATH = 'token.json'
 
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
