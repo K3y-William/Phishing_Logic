@@ -1,7 +1,12 @@
 # Scan incoming & past emails
+<<<<<<< HEAD
 from flask import Blueprint, session, request, jsonify, current_app
 #pathing can vary depending on location of app execution
 from app.services.email_services.email_login_handler import analyze_email_recent, filter_analyze_email
+=======
+from flask import Blueprint, session, redirect, request, jsonify, current_app
+from backend.app.services.email_services.email_login_handler import analyze_email_recent, analyze_specific_email
+>>>>>>> d079c4468569953355f442aeda039127726bdab8
 
 MAX_RESULTS = 7
 
